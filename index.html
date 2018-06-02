@@ -16,39 +16,40 @@ html, body, canvas {
 
 <script type="text/javascript" src="webgl_shader.js"></script>
 <script type="text/javascript" src="gl-matrix/common.js"></script>
+<script type="text/javascript" src="gl-matrix/vec4.js"></script>
 <script type="text/javascript" src="gl-matrix/mat4.js"></script>
+<script type="text/javascript" src="gl-matrix/quat.js"></script>
 
 <script id="vshader" type="x-shader">
     uniform mat4 u_mvp_matrix;
     attribute vec4 a_position;
     uniform float u_parameter;
-    varying vec3 v_color;
+    varying float v_color_index;
     void main()
     {
-        float zzz = sin((a_position.x*a_position.x+a_position.y*a_position.y)*10.0+u_parameter);
+        float zzz = sin(sqrt(a_position.x*a_position.x+a_position.y*a_position.y)*10.0+u_parameter);
         gl_Position = u_mvp_matrix * vec4(a_position.xy, zzz/5.0,  1.0);
-        zzz = (zzz + 1.0)/2.0;
-        if(     zzz < 1.0/5.0)
-            v_color = vec3(1.0, zzz*5.0, 0.0);
-        else if(zzz < 2.0/5.0)
-            v_color = vec3(1.0-(zzz*5.0-1.0), 1.0, 0.0);
-        else if(zzz < 3.0/5.0)
-            v_color = vec3(0.0, 1.0, zzz*5.0-2.0);
-        else if(zzz < 4.0/5.0)
-            v_color = vec3(0.0, 1.0-(zzz*5.0-3.0), 1.0);
-        else if(zzz < 1.0)
-            v_color = vec3(zzz*5.0-4.0, 0.0, 1.0);
-        else
-            v_color = vec3(1.0, 0.0, 0.0);
+        v_color_index = (zzz + 1.0)/2.0;
     }
 </script>
 
 <script id="fshader" type="x-shader">
     precision mediump float;
-    varying vec3 v_color;
+    varying float v_color_index;
     void main()
     {
-        gl_FragColor = vec4(v_color, 1);
+        if(v_color_index < 1.0/5.0)
+            gl_FragColor = vec4(1.0, v_color_index*5.0, 0.0, 1.0);
+        else if(v_color_index < 2.0/5.0)
+            gl_FragColor = vec4(1.0-(v_color_index*5.0-1.0), 1.0, 0.0, 1.0);
+        else if(v_color_index < 3.0/5.0)
+            gl_FragColor = vec4(0.0, 1.0, v_color_index*5.0-2.0, 1.0);
+        else if(v_color_index < 4.0/5.0)
+            gl_FragColor = vec4(0.0, 1.0-(v_color_index*5.0-3.0), 1.0, 1.0);
+        else if(v_color_index < 1.0)
+            gl_FragColor = vec4(v_color_index*5.0-4.0, 0.0, 1.0, 1.0);
+        else
+            gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);
     }
 </script>
 
@@ -72,7 +73,7 @@ html, body, canvas {
 
     var vertices = [];
 
-    var size_xy = 51.0;
+    var size_xy = 100.0;
 
     function vertices_update(size)
     {
@@ -118,31 +119,45 @@ html, body, canvas {
     var last_mouse_x = 0;
     var last_mouse_y = 0;
 
-    gl.lineWidth(5.0);
-
     var mvp_matrix = mat4.create();
-    program.u_mvp_matrix_loc = gl.getUniformLocation(program, 'u_mvp_matrix');
+    var mv_matrix = mat4.create();
+    var p_matrix = mat4.create();
 
-    var mvp_matrix_scale = mat4.create();
-    mat4.scale(mvp_matrix_scale, mvp_matrix_scale, [0.5, 0.5*c.width / c.height, 1.0]);
+    mat4.scale(p_matrix, p_matrix, [0.5, 0.5*c.width / c.height, 1.0]);
+    mat4.copy(mvp_matrix, p_matrix);
+
+    program.u_mvp_matrix_loc = gl.getUniformLocation(program, 'u_mvp_matrix');
 
     function matrix_update()
     {
-//        mat4.identity(mvp_matrix);
-//        mat4.scale(mvp_matrix, mvp_matrix, [0.5, 0.5*c.width / c.height, 1.0]);
-
-//        mat4.rotate(mvp_matrix, mvp_matrix, rot_x, [1, 0, 0]);
-        mat4.rotate(mvp_matrix, mvp_matrix_scale, rot_x, [1, 0, 0]);
-        mat4.rotate(mvp_matrix, mvp_matrix, rot_y, [0, 1, 0]);
-
         gl.uniformMatrix4fv(program.u_mvp_matrix_loc, false, mvp_matrix);
     }
 
+    var tracking = quat.create();
     function mouse_move(e)
     {
         if (is_mouse_down) {
-            rot_y -= (e.clientX - last_mouse_x)*0.01;
-            rot_x -= (e.clientY - last_mouse_y)*0.01;
+            var x = e.clientX - last_mouse_x;
+            var y = e.clientY- last_mouse_y;
+
+            if (x == 0 && y == 0)
+                return;
+
+            var dist = Math.sqrt(x * x + y * y);
+            var angle = dist * 0.01;
+
+            w = Math.cos(angle),
+            s = Math.sin(angle)/dist;
+
+            x *= -s;
+            y *= -s;
+
+            var working = [y, x, 0, w];
+
+            quat.multiply(tracking, working, tracking);
+            mat4.fromQuat(mv_matrix, tracking);
+            mat4.multiply(mvp_matrix, p_matrix, mv_matrix);
+
             last_mouse_x = e.clientX;
             last_mouse_y = e.clientY;
             matrix_update();
@@ -172,8 +187,7 @@ html, body, canvas {
 
         gl.uniform1f(program.u_parameter_loc, parameter);
 
-//        gl.drawArrays(gl.TRIANGLES, 0, vertices.length/2);
-        gl.drawArrays(gl.LINES, 0, vertices.length/2);
+        gl.drawArrays(gl.TRIANGLES, 0, vertices.length/2);
     }
 
     function tick()
