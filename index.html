@@ -180,6 +180,8 @@ html, body, canvas {
     c.addEventListener("mousedown", mouse_down, false);
     c.addEventListener("mouseup", mouse_up, false);
 
+    matrix_update();
+
     function update_world()
     {
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -188,15 +190,10 @@ html, body, canvas {
         gl.uniform1f(program.u_parameter_loc, parameter);
 
         gl.drawArrays(gl.TRIANGLES, 0, vertices.length/2);
+        window.requestAnimationFrame(update_world);
     }
 
-    function tick()
-    {
-        window.setTimeout(tick, 20);
-        update_world();
-    }
-    matrix_update();
-    tick();
+    window.requestAnimationFrame(update_world);
 
 </script>
 
